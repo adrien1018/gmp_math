@@ -11,10 +11,52 @@ mpf_class mpf_pi(mp_bitcnt_t prec)
   return (a + b) * (a + b) / 4 / t;
 }
 
-mpf_class mpf_arctan_zero(mpf_class x)
+mpf_class mpf_sin_taylor(mpf_class x)
+{
+  mpz_class counter(2);
+  mpf_class prv(9, x.get_prec()), result(x), denom(1, x.get_prec()), x2(x * x);
+  while (prv != result) {
+    prv = result;
+    denom *= -counter * (counter + 1);
+    counter += 2;
+    x *= x2;
+    result += x / denom;
+  }
+  return result;
+}
+
+mpf_class mpf_sin(const mpf_class& x)
+{
+  mpf_class pi2 = 2 * mpf_pi(x.get_prec());
+  return mpf_sin_taylor(x - floor(x / pi2) * pi2);
+}
+
+mpf_class mpf_cos_taylor(mpf_class x)
+{
+  mpz_class counter(1);
+  mpf_class prv(9, x.get_prec()), result(1, x.get_prec());
+  mpf_class denom(1, x.get_prec()), x2(x * x);
+  x = 1;
+  while (prv != result) {
+    prv = result;
+    denom *= -counter * (counter + 1);
+    counter += 2;
+    x *= x2;
+    result += x / denom;
+  }
+  return result;
+}
+
+mpf_class mpf_cos(const mpf_class& x)
+{
+  mpf_class pi2 = 2 * mpf_pi(x.get_prec());
+  return mpf_cos_taylor(x - floor(x / pi2) * pi2);
+}
+
+mpf_class mpf_arctan_taylor_zero(mpf_class x)
 {
   mpz_class denom(1);
-  mpf_class prv(0, x.get_prec()), result(x), nx2(-x * x);
+  mpf_class prv(9, x.get_prec()), result(x), nx2(-x * x);
   while (prv != result) {
     prv = result;
     x *= nx2;
@@ -24,10 +66,10 @@ mpf_class mpf_arctan_zero(mpf_class x)
   return result;
 }
 
-mpf_class mpf_arctan_one(mpf_class x)
+mpf_class mpf_arctan_taylor_one(mpf_class x)
 {
   mpz_class denom_odd(1), denom_even(1);
-  mpf_class prv(0, x.get_prec()), result(mpf_pi(x.get_prec()) / 4);
+  mpf_class prv(9, x.get_prec()), result(mpf_pi(x.get_prec()) / 4);
   x -= 1;
   mpf_class x2(x * x), num(x), pow2(2, x.get_prec());
   while (prv != result) {
@@ -49,15 +91,15 @@ mpf_class mpf_atan(const mpf_class& x)
 {
   const double thresh = 0.7;
   if (x > 1 / thresh)
-    return mpf_pi(x.get_prec()) / 2 - mpf_arctan_zero(1 / x);
+    return mpf_pi(x.get_prec()) / 2 - mpf_arctan_taylor_zero(1 / x);
   else if (x < -1 / thresh)
-    return -mpf_pi(x.get_prec()) / 2 - mpf_arctan_zero(1 / x);
+    return -mpf_pi(x.get_prec()) / 2 - mpf_arctan_taylor_zero(1 / x);
   else if (x > -thresh && x < thresh)
-    return mpf_arctan_zero(x);
+    return mpf_arctan_taylor_zero(x);
   else if (x < 0)
-    return -mpf_arctan_one(-x);
+    return -mpf_arctan_taylor_one(-x);
   else
-    return mpf_arctan_one(x);
+    return mpf_arctan_taylor_one(x);
 }
 
 mpf_class mpf_atan2(const mpf_class& Y, const mpf_class& X)
