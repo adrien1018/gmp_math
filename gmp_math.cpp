@@ -3,6 +3,69 @@
 #include <algorithm>
 #include <stdexcept>
 
+mpz_class mpz_sqrt(const mpz_class& x) { return sqrt(x); }
+
+mpz_pair mpz_sqrtrem(const mpz_class& x)
+{
+  mpz_pair result;
+  mpz_sqrtrem(result.first.get_mpz_t(), result.second.get_mpz_t(),
+              x.get_mpz_t());
+  return result;
+}
+
+mpz_class mpz_root(const mpz_class& x, unsigned long y)
+{
+  mpz_class result;
+  mpz_root(result.get_mpz_t(), x.get_mpz_t(), y);
+  return result;
+}
+
+mpz_pair mpz_rootrem(const mpz_class& x, unsigned long y)
+{
+  mpz_pair result;
+  mpz_rootrem(result.first.get_mpz_t(), result.second.get_mpz_t(),
+              x.get_mpz_t(), y);
+  return result;
+}
+
+bool mpz_perfect_power(const mpz_class& x)
+{
+  return mpz_perfect_power_p(x.get_mpz_t());
+}
+
+bool mpz_perfect_square(const mpz_class& x)
+{
+  return mpz_perfect_square_p(x.get_mpz_t());
+}
+
+mpz_class mpz_gcd(const mpz_class& x, const mpz_class& y) { return gcd(x, y); }
+
+mpz_class mpz_gcdext(const mpz_class& x, const mpz_class& y,
+                     mpz_class& a, mpz_class& b)
+{
+  mpz_class result;
+  mpz_gcdext(result.get_mpz_t(), a.get_mpz_t(), b.get_mpz_t(),
+             x.get_mpz_t(), y.get_mpz_t());
+  return result;
+}
+
+mpz_class mpz_lcm(const mpz_class& x, const mpz_class& y) { return lcm(x, y); }
+
+mpz_class mpz_pow(const mpz_class& x, unsigned long y)
+{
+  mpz_class result;
+  mpz_pow_ui(result.get_mpz_t(), x.get_mpz_t(), y);
+  return result;
+}
+
+mpz_class mpz_powm(const mpz_class& x, const mpz_class& y,
+                   const mpz_class& m)
+{
+  mpz_class result;
+  mpz_powm(result.get_mpz_t(), x.get_mpz_t(), y.get_mpz_t(), m.get_mpz_t());
+  return result;
+}
+
 mpf_class mpf_e(mp_bitcnt_t prec)
 {
   mpz_class denom(1);
@@ -22,6 +85,20 @@ mpf_class mpf_pi(mp_bitcnt_t prec)
     a = A, b = B, t = T; p *= 2;
   }
   return (a + b) * (a + b) / 4 / t;
+}
+
+mpf_class mpf_sqrt(const mpf_class& x) { return sqrt(x); }
+
+mpf_class mpf_mulexp2(const mpf_class& x, long y)
+{
+  if (!y) return x;
+  mpf_class result(0, x.get_prec());
+  if (y < 0) {
+    mpf_div_2exp(result.get_mpf_t(), x.get_mpf_t(), -y);
+  } else {
+    mpf_mul_2exp(result.get_mpf_t(), x.get_mpf_t(), y);
+  }
+  return result;
 }
 
 mpf_class _mpf_sin_taylor(mpf_class x)
@@ -200,36 +277,20 @@ mpf_class mpf_ln(const mpf_class& x)
 {
   if (x <= 0) throw std::domain_error("mpf_ln: non-positive logarithm argument");
   long exp_part;
+  mpf_class nhalf("-0.5", x.get_prec());
   mpf_get_d_2exp(&exp_part, x.get_mpf_t());
-  mpf_t norm_x_t;
-  mpf_init2(norm_x_t, x.get_prec());
-  if (exp_part >= 0) {
-    mpf_div_2exp(norm_x_t, x.get_mpf_t(), exp_part);
-  } else {
-    mpf_mul_2exp(norm_x_t, x.get_mpf_t(), -exp_part);
-  }
-
-  mpf_class norm_x(norm_x_t), nhalf("-0.5", x.get_prec());
-  mpf_clear(norm_x_t);
-  return _mpf_ln1_taylor(norm_x - 1) - exp_part * _mpf_ln1_taylor(nhalf);
+  return _mpf_ln1_taylor(mpf_mulexp2(x, -exp_part) - 1)
+          - exp_part * _mpf_ln1_taylor(nhalf);
 }
 
 mpf_class mpf_log2(const mpf_class& x)
 {
   if (x <= 0) throw std::domain_error("mpf_log2: non-positive logarithm argument");
   long exp_part;
+  mpf_class nhalf("-0.5", x.get_prec());
   mpf_get_d_2exp(&exp_part, x.get_mpf_t());
-  mpf_t norm_x_t;
-  mpf_init2(norm_x_t, x.get_prec());
-  if (exp_part >= 0) {
-    mpf_div_2exp(norm_x_t, x.get_mpf_t(), exp_part);
-  } else {
-    mpf_mul_2exp(norm_x_t, x.get_mpf_t(), -exp_part);
-  }
-
-  mpf_class norm_x(norm_x_t), nhalf("-0.5", x.get_prec());
-  mpf_clear(norm_x_t);
-  return exp_part - _mpf_ln1_taylor(norm_x - 1) / _mpf_ln1_taylor(nhalf);
+  return exp_part - _mpf_ln1_taylor(mpf_mulexp2(x, -exp_part) - 1)
+          / _mpf_ln1_taylor(nhalf);
 }
 
 mpf_class _mpf_exp_taylor(mpf_class x)
@@ -247,19 +308,8 @@ mpf_class _mpf_exp2(mpf_class x, const mpf_class& ln2)
 {
   if (!x.fits_slong_p())
     throw std::out_of_range("_mpf_exp2: exponent too small or too large");
-  long int_part = mpf_class(floor(x)).get_si();
-  x -= int_part;
-
-  mpf_t result;
-  mpf_init2(result, x.get_prec());
-  if (int_part >= 0) {
-    mpf_mul_2exp(result, _mpf_exp_taylor(x * ln2).get_mpf_t(), int_part);
-  } else {
-    mpf_div_2exp(result, _mpf_exp_taylor(x * ln2).get_mpf_t(), -int_part);
-  }
-  mpf_class ret(result);
-  mpf_clear(result);
-  return ret;
+  mpf_class fl = floor(x);
+  return mpf_mulexp2(_mpf_exp_taylor((x - fl) * ln2), fl.get_si());
 }
 
 mpf_class mpf_exp(const mpf_class& x)
