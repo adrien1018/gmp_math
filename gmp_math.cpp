@@ -1,5 +1,6 @@
 #include "gmp_math.h"
 
+#include <cmath>
 #include <algorithm>
 #include <stdexcept>
 
@@ -88,6 +89,32 @@ mpf_class mpf_pi(mp_bitcnt_t prec)
 }
 
 mpf_class mpf_sqrt(const mpf_class& x) { return sqrt(x); }
+
+mpf_class mpf_cbrt(const mpf_class& x)
+{
+  long exp_part = mpf_log2floor(x) / 3;
+  mpf_class prv(x), now(x), result(mpf_mulexp2(
+      mpf_class(cbrt(mpf_mulexp2(x, -exp_part * 3).get_d()),
+                x.get_prec()), exp_part));
+  do {
+    prv = now;
+    result -= now = (result - x / (result * result)) / 3;
+  } while (abs(now) < abs(prv));
+  return result;
+}
+
+mpf_class mpf_root(const mpf_class& x, unsigned long y)
+{
+  long exp_part = mpf_log2floor(x) / (long)y;
+  mpf_class prv(x), now(x), result(mpf_mulexp2(
+      mpf_class(pow(mpf_mulexp2(x, -exp_part * y).get_d(), 1. / y),
+                x.get_prec()), exp_part));
+  do {
+    prv = now;
+    result -= now = (result - x / mpf_powint(result, y - 1)) / y;
+  } while (abs(now) < abs(prv));
+  return result;
+}
 
 mpf_class mpf_mulexp2(const mpf_class& x, long y)
 {
@@ -261,6 +288,13 @@ mpf_class mpf_atan2(const mpf_class& Y, const mpf_class& X)
   return mpf_atan(Y / X) + pi;
 }
 
+long mpf_log2floor(const mpf_class& x)
+{
+  long result;
+  mpf_get_d_2exp(&result, x.get_mpf_t());
+  return result - 1;
+}
+
 mpf_class _mpf_ln1_taylor(const mpf_class& x)
 {
   mpz_class denom(1);
@@ -276,9 +310,8 @@ mpf_class _mpf_ln1_taylor(const mpf_class& x)
 mpf_class mpf_ln(const mpf_class& x)
 {
   if (x <= 0) throw std::domain_error("mpf_ln: non-positive logarithm argument");
-  long exp_part;
+  long exp_part = mpf_log2floor(x) + 1;
   mpf_class nhalf("-0.5", x.get_prec());
-  mpf_get_d_2exp(&exp_part, x.get_mpf_t());
   return _mpf_ln1_taylor(mpf_mulexp2(x, -exp_part) - 1)
           - exp_part * _mpf_ln1_taylor(nhalf);
 }
@@ -286,9 +319,8 @@ mpf_class mpf_ln(const mpf_class& x)
 mpf_class mpf_log2(const mpf_class& x)
 {
   if (x <= 0) throw std::domain_error("mpf_log2: non-positive logarithm argument");
-  long exp_part;
+  long exp_part = mpf_log2floor(x) + 1;
   mpf_class nhalf("-0.5", x.get_prec());
-  mpf_get_d_2exp(&exp_part, x.get_mpf_t());
   return exp_part - _mpf_ln1_taylor(mpf_mulexp2(x, -exp_part) - 1)
           / _mpf_ln1_taylor(nhalf);
 }
