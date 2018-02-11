@@ -1,5 +1,6 @@
 #include "gmp_math.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 mpf_class mpf_e(mp_bitcnt_t prec)
@@ -195,30 +196,108 @@ mpf_class _mpf_ln1_taylor(const mpf_class& x)
   return result;
 }
 
-mpf_class mpf_log2(const mpf_class& x)
+mpf_class mpf_ln(const mpf_class& x)
 {
-  if (x <= 0) throw std::domain_error("non-positive logarithm argument");
-  signed long exp_part;
+  if (x <= 0) throw std::domain_error("mpf_ln: non-positive logarithm argument");
+  long exp_part;
   mpf_get_d_2exp(&exp_part, x.get_mpf_t());
   mpf_t norm_x_t;
   mpf_init2(norm_x_t, x.get_prec());
-  if (exp_part >= 0) mpf_div_2exp(norm_x_t, x.get_mpf_t(), exp_part);
-  else mpf_mul_2exp(norm_x_t, x.get_mpf_t(), -exp_part);
+  if (exp_part >= 0) {
+    mpf_div_2exp(norm_x_t, x.get_mpf_t(), exp_part);
+  } else {
+    mpf_mul_2exp(norm_x_t, x.get_mpf_t(), -exp_part);
+  }
 
   mpf_class norm_x(norm_x_t), nhalf("-0.5", x.get_prec());
+  mpf_clear(norm_x_t);
+  return _mpf_ln1_taylor(norm_x - 1) - exp_part * _mpf_ln1_taylor(nhalf);
+}
+
+mpf_class mpf_log2(const mpf_class& x)
+{
+  if (x <= 0) throw std::domain_error("mpf_log2: non-positive logarithm argument");
+  long exp_part;
+  mpf_get_d_2exp(&exp_part, x.get_mpf_t());
+  mpf_t norm_x_t;
+  mpf_init2(norm_x_t, x.get_prec());
+  if (exp_part >= 0) {
+    mpf_div_2exp(norm_x_t, x.get_mpf_t(), exp_part);
+  } else {
+    mpf_mul_2exp(norm_x_t, x.get_mpf_t(), -exp_part);
+  }
+
+  mpf_class norm_x(norm_x_t), nhalf("-0.5", x.get_prec());
+  mpf_clear(norm_x_t);
   return exp_part - _mpf_ln1_taylor(norm_x - 1) / _mpf_ln1_taylor(nhalf);
 }
 
-mpf_class mpf_ln(const mpf_class& x)
+mpf_class _mpf_exp_taylor(mpf_class x)
 {
-  if (x <= 0) throw std::domain_error("non-positive logarithm argument");
-  signed long exp_part;
-  mpf_get_d_2exp(&exp_part, x.get_mpf_t());
-  mpf_t norm_x_t;
-  mpf_init2(norm_x_t, x.get_prec());
-  if (exp_part >= 0) mpf_div_2exp(norm_x_t, x.get_mpf_t(), exp_part);
-  else mpf_mul_2exp(norm_x_t, x.get_mpf_t(), -exp_part);
+  mpz_class denom(1);
+  mpf_class prv(x), result(x + 1), num(x);
+  do {
+    prv = result;
+    result += num *= x / ++denom;
+  } while (prv != result);
+  return result;
+}
 
-  mpf_class norm_x(norm_x_t), nhalf("-0.5", x.get_prec());
-  return _mpf_ln1_taylor(norm_x - 1) - exp_part * _mpf_ln1_taylor(nhalf);
+mpf_class _mpf_exp2(mpf_class x, const mpf_class& ln2)
+{
+  if (!x.fits_slong_p())
+    throw std::out_of_range("_mpf_exp2: exponent too small or too large");
+  long int_part = mpf_class(floor(x)).get_si();
+  x -= int_part;
+
+  mpf_t result;
+  mpf_init2(result, x.get_prec());
+  if (int_part >= 0) {
+    mpf_mul_2exp(result, _mpf_exp_taylor(x * ln2).get_mpf_t(), int_part);
+  } else {
+    mpf_div_2exp(result, _mpf_exp_taylor(x * ln2).get_mpf_t(), -int_part);
+  }
+  mpf_class ret(result);
+  mpf_clear(result);
+  return ret;
+}
+
+mpf_class mpf_exp(const mpf_class& x)
+{
+  mpf_class ln2(-_mpf_ln1_taylor(mpf_class("-0.5", x.get_prec())));
+  return _mpf_exp2(x / ln2, ln2);
+}
+
+mpf_class mpf_exp2(const mpf_class& x)
+{
+  mpf_class ln2(-_mpf_ln1_taylor(mpf_class("-0.5", x.get_prec())));
+  return _mpf_exp2(x, ln2);
+}
+
+mpf_class mpf_powint(mpf_class x, long y)
+{
+  bool flag = false;
+  if (y < 0) y = -y, flag = true;
+
+  mpf_class result(1, x.get_prec());
+  for (; y; (y >>= 1) && (x *= x))
+    if (y & 1l) result *= x;
+  return flag ? 1 / result : result;
+}
+
+mpf_class mpf_pow(const mpf_class& x, const mpf_class& y)
+{
+  if (floor(y) == y) {
+    if (x == 0 && y == 0) throw std::domain_error("mpf_pow: zero base and exponent");
+    if (!y.fits_slong_p())
+      throw std::out_of_range("mpf_pow: exponent too small or too large");
+    if (y.get_prec() > x.get_prec())
+      return mpf_powint(mpf_class(x, y.get_prec()), y.get_si());
+    return mpf_powint(x, y.get_si());
+  }
+  if (x < 0) throw std::domain_error("mpf_pow: negative base and non-integer exponent");
+  if (x == 0) return mpf_class(0, std::max(x.get_prec(), y.get_prec()));
+
+  mpf_class ln2(-_mpf_ln1_taylor(mpf_class("-0.5", x.get_prec())));
+  return _mpf_exp2(y * mpf_log2(x), ln2);
 }
